@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Interactive launcher for MatterGen-Scripts.
+Interactive launcher for MatterGen-Scripts-2.
 
 The launcher provides one interface for:
 
@@ -178,8 +178,8 @@ def select_action():
         "What do you want to do?",
         choices=[
             "Download datasets",
-            "Analyze datasets",
-            "Download + analyze",
+            "Analyze datasets (per compound)",
+            "Download + analyze (per compound)",
             "Exit",
         ],
     ).ask()
@@ -802,9 +802,14 @@ def run_analyses(
     """
     Run all selected analyses for all selected dataset/system pairs.
 
+    Each analysis script groups structures by reduced chemical formula
+    and calculates statistics independently for every compound.
+
     The launcher does not inspect the input directories and does not
     search for structure files. The individual analysis scripts are
-    responsible for file discovery and empty-directory handling.
+    responsible for file discovery, compound grouping and empty-directory
+    handling. Results are written below the dataset/system output directory,
+    in separate compound and analysis subdirectories.
     """
 
     success = True
@@ -857,7 +862,7 @@ def run_analyses(
                 completed = run_command(
                     command=command,
                     title=(
-                        f"{analysis_name} | "
+                        f"{analysis_name} (per compound) | "
                         f"{dataset} | "
                         f"{chemical_system}"
                     ),
@@ -942,6 +947,16 @@ def print_configuration(
     )
 
     table.add_row(
+        "Statistics grouping",
+        "Per compound (reduced chemical formula)",
+    )
+
+    table.add_row(
+        "Results structure",
+        "<dataset>/<chemical-system>/<compound>/<analysis>/",
+    )
+
+    table.add_row(
         "Analyses",
         analysis_text or "None",
     )
@@ -1007,8 +1022,13 @@ def main():
 
     console.print(
         Panel(
-            "[bold]MatterGen-Scripts[/bold]\n"
-            "Dataset download and analysis launcher",
+            "[bold]MatterGen-Scripts-2[/bold]\n"
+            "Dataset download and per-compound statistics launcher\n\n"
+            "[cyan]Analysis mode[/cyan]\n"
+            "Each structure is assigned to a compound using its reduced "
+            "chemical formula. Every compound is analyzed independently.\n\n"
+            "[dim]Results: <dataset>/<chemical-system>/<compound>/<analysis>/[/dim]",
+            title="Materials Analysis",
             expand=False,
         )
     )
@@ -1031,7 +1051,7 @@ def main():
 
     if action in {
         "Download datasets",
-        "Download + analyze",
+        "Download + analyze (per compound)",
     }:
 
         databases = select_databases()
@@ -1048,8 +1068,8 @@ def main():
     analyses = []
 
     if action in {
-        "Analyze datasets",
-        "Download + analyze",
+        "Analyze datasets (per compound)",
+        "Download + analyze (per compound)",
     }:
 
         datasets = (
@@ -1106,7 +1126,7 @@ def main():
 
     if action in {
         "Download datasets",
-        "Download + analyze",
+        "Download + analyze (per compound)",
     }:
 
         data_directory.mkdir(
@@ -1115,8 +1135,8 @@ def main():
         )
 
     if action in {
-        "Analyze datasets",
-        "Download + analyze",
+        "Analyze datasets (per compound)",
+        "Download + analyze (per compound)",
     }:
 
         results_directory.mkdir(
@@ -1132,7 +1152,7 @@ def main():
 
     if action in {
         "Download datasets",
-        "Download + analyze",
+        "Download + analyze (per compound)",
     }:
 
         download_success = run_downloads(
@@ -1151,8 +1171,8 @@ def main():
     # -------------------------------------------------------------------------
 
     if action in {
-        "Analyze datasets",
-        "Download + analyze",
+        "Analyze datasets (per compound)",
+        "Download + analyze (per compound)",
     }:
 
         analysis_success = run_analyses(
