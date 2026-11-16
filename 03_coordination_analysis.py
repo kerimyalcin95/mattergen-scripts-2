@@ -56,6 +56,7 @@ from common.io import (
     create_analysis_output_directory,
     find_structure_files,
     load_structure,
+    group_structure_files
 )
 
 from common.statistics import (
@@ -420,47 +421,71 @@ def create_all_plots(
     )
 
 
-def main():
-    args = parse_arguments()
 
-    output_dir = create_analysis_output_directory(
-        args.output,
-        "coordination",
-    )
+def main():
+
+    args = parse_arguments()
 
     print()
     print("Searching for structures...")
 
-    files = find_structure_files(args.input, args.recursive)
+    files = find_structure_files(
+        args.input,
+        args.recursive,
+    )
+
     print(f"Found {len(files)} structures.")
 
-    if len(files) == 0:
+    if not files:
         print("No supported files found.")
         return
 
+    groups = group_structure_files(files)
+
+    print(f"Found {len(groups)} compound groups.")
+
+    for compound, compound_files in groups.items():
+
+        print()
+        print("=" * 60)
+        print(f"Analyzing compound: {compound}")
+        print(f"Structures: {len(compound_files)}")
+        print("=" * 60)
+
+        output_dir = create_analysis_output_directory(
+            args.output / compound,
+            "coordination",
+        )
+
+        rows = parallel_map(
+            compound_files,
+            analyze_structure,
+            args.workers,
+            f"Analyzing {compound} coordination",
+        )
+
+        df = pd.DataFrame(rows)
+
+        print_summary(df)
+
+        save_csv(
+            df,
+            output_dir,
+        )
+
+        print("Generating plots...")
+
+        create_all_plots(
+            df,
+            output_dir,
+        )
+
+        print()
+        print(f"Results written to {output_dir.resolve()}")
+
     print()
+    print("All compound groups analyzed.")
 
-    rows = parallel_map(
-        files,
-        analyze_structure,
-        args.workers,
-        "Analyzing coordination",
-    )
-
-    df = pd.DataFrame(
-        rows,
-    )
-
-    print_summary(df)
-
-    save_csv(df, output_dir)
-
-    print("Generating plots...")
-    create_all_plots(df, output_dir)
-
-    print()
-    print(f"Results written to {output_dir.resolve()}")
-    print("Done.")
 
 
 if __name__ == "__main__":

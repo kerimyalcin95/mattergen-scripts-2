@@ -64,6 +64,7 @@ from common.io import (
     create_analysis_output_directory,
     find_structure_files,
     load_structure,
+    group_structure_files,
 )
 
 from common.statistics import (
@@ -449,14 +450,10 @@ def create_all_plots(
     )
 
 
+
 def main():
 
     args = parse_arguments()
-
-    output_dir = create_analysis_output_directory(
-        args.output,
-        "rdf",
-    )
 
     print()
     print("Searching for structures...")
@@ -466,97 +463,90 @@ def main():
         args.recursive,
     )
 
-    print(
-        f"Found {len(files)} structures."
-    )
+    print(f"Found {len(files)} structures.")
 
-    if len(files) == 0:
-
-        print(
-            "No supported files found."
-        )
-
+    if not files:
+        print("No supported files found.")
         return
 
-    print()
+    groups = group_structure_files(files)
 
-    worker = partial(
-        analyze_structure,
-        rmax=args.rmax,
-        bin_size=args.bin_size,
-    )
+    print(f"Found {len(groups)} compound groups.")
 
-    results = parallel_map(
-        files,
-        worker,
-        args.workers,
-        "Computing RDF",
-    )
+    for compound, compound_files in groups.items():
 
-    analysis_rows = []
-    rdf_frames = []
+        print()
+        print("=" * 60)
+        print(f"Analyzing compound: {compound}")
+        print(f"Structures: {len(compound_files)}")
+        print("=" * 60)
 
-    for row, rdf in results:
-
-        analysis_rows.append(
-            row,
+        output_dir = create_analysis_output_directory(
+            args.output / compound,
+            "rdf",
         )
 
-        if rdf is not None:
-            rdf_frames.append(
-                rdf,
+        worker = partial(
+            analyze_structure,
+            rmax=args.rmax,
+            bin_size=args.bin_size,
+        )
+
+        results = parallel_map(
+            compound_files,
+            worker,
+            args.workers,
+            f"Computing {compound} RDF",
+        )
+
+        analysis_rows = []
+        rdf_frames = []
+
+        for row, rdf in results:
+
+            analysis_rows.append(row)
+
+            if rdf is not None:
+                rdf_frames.append(rdf)
+
+        df = pd.DataFrame(analysis_rows)
+
+        if rdf_frames:
+            rdf_curves = pd.concat(
+                rdf_frames,
+                ignore_index=True,
+            )
+        else:
+            rdf_curves = pd.DataFrame(
+                columns=[
+                    "file",
+                    "radius",
+                    "rdf",
+                ]
             )
 
-    df = pd.DataFrame(
-        analysis_rows,
-    )
+        print_summary(df)
 
-    if rdf_frames:
-
-        rdf_curves = pd.concat(
-            rdf_frames,
-            ignore_index=True,
+        save_csv(
+            df,
+            rdf_curves,
+            output_dir,
         )
 
-    else:
+        print("Generating plots...")
 
-        rdf_curves = pd.DataFrame(
-            columns=[
-                "file",
-                "radius",
-                "rdf",
-            ]
+        create_all_plots(
+            df,
+            rdf_curves,
+            output_dir,
         )
 
-    print_summary(
-        df,
-    )
-
-    save_csv(
-        df,
-        rdf_curves,
-        output_dir,
-    )
-
-    print(
-        "Generating plots..."
-    )
-
-    create_all_plots(
-        df,
-        rdf_curves,
-        output_dir,
-    )
+        print()
+        print(f"Results written to {output_dir.resolve()}")
 
     print()
+    print("All compound groups analyzed.")
 
-    print(
-        f"Results written to {output_dir.resolve()}"
-    )
-
-    print(
-        "Done."
-    )
 
 
 if __name__ == "__main__":

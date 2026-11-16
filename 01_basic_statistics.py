@@ -55,9 +55,12 @@ from common.results import (
 
 from common.io import (
     ensure_output_directory,
+    create_analysis_output_directory,
     find_structure_files,
+    group_structure_files,
     load_structure,
 )
+
 
 from common.statistics import (
     print_analysis_summary,
@@ -358,16 +361,12 @@ def create_all_plots(
     )
 
 
+
 def main():
 
     args = parse_arguments()
 
-    ensure_output_directory(
-        args.output,
-    )
-
     print()
-
     print("Searching for structures...")
 
     files = find_structure_files(
@@ -377,44 +376,56 @@ def main():
 
     print(f"Found {len(files)} structures.")
 
-    if len(files) == 0:
-
+    if not files:
         print("No supported files found.")
-
         return
 
+    groups = group_structure_files(files)
+
+    print(f"Found {len(groups)} compound groups.")
+
+    for compound, compound_files in groups.items():
+
+        print()
+        print("=" * 60)
+        print(f"Analyzing compound: {compound}")
+        print(f"Structures: {len(compound_files)}")
+        print("=" * 60)
+
+        output_dir = create_analysis_output_directory(
+            args.output / compound,
+            "basic_statistics",
+        )
+
+        rows = parallel_map(
+            compound_files,
+            analyze_structure,
+            args.workers,
+            f"Analyzing {compound}",
+        )
+
+        df = pd.DataFrame(rows)
+
+        print_summary(df)
+
+        save_csv(
+            df,
+            output_dir,
+        )
+
+        print("Generating plots...")
+
+        create_all_plots(
+            df,
+            output_dir,
+        )
+
+        print()
+        print(f"Results written to {output_dir.resolve()}")
+
     print()
+    print("All compound groups analyzed.")
 
-    rows = parallel_map(
-        files,
-        analyze_structure,
-        args.workers,
-        "Analyzing structures",
-    )
-
-    df = pd.DataFrame(
-        rows,
-    )
-
-    print_summary(df)
-
-    save_csv(
-        df,
-        args.output,
-    )
-
-    print("Generating plots...")
-
-    create_all_plots(
-        df,
-        args.output,
-    )
-
-    print()
-
-    print(f"Results written to {args.output.resolve()}")
-
-    print("Done.")
 
 
 if __name__ == "__main__":

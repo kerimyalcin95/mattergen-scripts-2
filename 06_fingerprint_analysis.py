@@ -82,6 +82,7 @@ from common.io import (
     create_analysis_output_directory,
     find_structure_files,
     load_structure,
+    group_structure_files
 )
 
 from common.plotting import (
@@ -733,14 +734,10 @@ def create_all_plots(
     )
 
 
+
 def main():
 
     args = parse_arguments()
-
-    output_dir = create_analysis_output_directory(
-        args.output,
-        "fingerprint",
-    )
 
     print()
     print("Searching for structures...")
@@ -750,145 +747,136 @@ def main():
         args.recursive,
     )
 
-    print(
-        f"Found {len(files)} structures."
-    )
+    print(f"Found {len(files)} structures.")
 
-    if len(files) == 0:
-
-        print(
-            "No supported files found."
-        )
-
+    if not files:
+        print("No supported files found.")
         return
 
-    print()
+    groups = group_structure_files(files)
 
-    results = parallel_map(
-        files,
-        analyze_structure,
-        args.workers,
-        "Computing fingerprints",
-    )
+    print(f"Found {len(groups)} compound groups.")
 
-    analysis_rows = []
+    for compound, compound_files in groups.items():
 
-    fingerprint_dict = {}
+        print()
+        print("=" * 60)
+        print(f"Analyzing compound: {compound}")
+        print(f"Structures: {len(compound_files)}")
+        print("=" * 60)
 
-    for row, fingerprints in results:
-
-        analysis_rows.append(
-            row,
+        output_dir = create_analysis_output_directory(
+            args.output / compound,
+            "fingerprint",
         )
 
-        if fingerprints is None:
-            continue
-
-        fingerprint_dict[
-            row["file"]
-        ] = fingerprints
-
-    analysis = pd.DataFrame(
-        analysis_rows,
-    )
-
-    valid = analysis[
-        analysis["valid"]
-    ]
-
-    if valid.empty:
-
-        crystalnn = None
-        opsite = None
-        voronoi = None
-        similarity = None
-        pca = None
-
-    else:
-
-        crystalnn = build_fingerprint_dataframe(
-            fingerprint_dict,
-            "crystalnn",
+        results = parallel_map(
+            compound_files,
+            analyze_structure,
+            args.workers,
+            f"Computing {compound} fingerprints",
         )
 
-        opsite = build_fingerprint_dataframe(
-            fingerprint_dict,
-            "opsite",
-        )
+        analysis_rows = []
+        fingerprint_dict = {}
 
-        voronoi = build_fingerprint_dataframe(
-            fingerprint_dict,
-            "voronoi",
-        )
+        for row, fingerprints in results:
 
-        (
+            analysis_rows.append(row)
+
+            if fingerprints is None:
+                continue
+
+            fingerprint_dict[row["file"]] = fingerprints
+
+        analysis = pd.DataFrame(analysis_rows)
+
+        valid = analysis[analysis["valid"]]
+
+        if valid.empty:
+
+            crystalnn = None
+            opsite = None
+            voronoi = None
+            similarity = None
+            pca = None
+
+        else:
+
+            crystalnn = build_fingerprint_dataframe(
+                fingerprint_dict,
+                "crystalnn",
+            )
+
+            opsite = build_fingerprint_dataframe(
+                fingerprint_dict,
+                "opsite",
+            )
+
+            voronoi = build_fingerprint_dataframe(
+                fingerprint_dict,
+                "voronoi",
+            )
+
+            (
+                similarity,
+                nearest_similarity,
+                mean_similarity,
+            ) = compute_similarity_statistics(
+                crystalnn,
+            )
+
+            analysis.loc[
+                analysis["valid"],
+                "nearest_neighbor_similarity",
+            ] = nearest_similarity
+
+            analysis.loc[
+                analysis["valid"],
+                "mean_similarity",
+            ] = mean_similarity
+
+            pca = compute_pca(crystalnn)
+
+            pca = pca.merge(
+                analysis[
+                    [
+                        "file",
+                        "formula",
+                        "reduced_formula",
+                    ]
+                ],
+                on="file",
+                how="left",
+            )
+
+        print_summary(analysis)
+
+        save_csv(
+            analysis,
+            crystalnn,
+            opsite,
+            voronoi,
             similarity,
-            nearest_similarity,
-            mean_similarity,
-        ) = compute_similarity_statistics(
-            crystalnn,
+            pca,
+            output_dir,
         )
 
-        analysis.loc[
-            analysis["valid"],
-            "nearest_neighbor_similarity",
-        ] = nearest_similarity
+        print("Generating plots...")
 
-        analysis.loc[
-            analysis["valid"],
-            "mean_similarity",
-        ] = mean_similarity
-
-        pca = compute_pca(
-            crystalnn,
+        create_all_plots(
+            analysis,
+            similarity,
+            pca,
+            output_dir,
         )
 
-        pca = pca.merge(
-            analysis[
-                [
-                    "file",
-                    "formula",
-                    "reduced_formula",
-                ]
-            ],
-            on="file",
-            how="left",
-        )
-
-    print_summary(
-        analysis,
-    )
-
-    save_csv(
-        analysis,
-        crystalnn,
-        opsite,
-        voronoi,
-        similarity,
-        pca,
-        output_dir,
-    )
-
-    print(
-        "Generating plots..."
-    )
-
-    create_all_plots(
-        analysis,
-        similarity,
-        pca,
-        output_dir,
-    )
+        print()
+        print(f"Results written to {output_dir.resolve()}")
 
     print()
+    print("All compound groups analyzed.")
 
-    print(
-        f"Results written to {output_dir.resolve()}"
-    )
-
-    print(
-        "Done."
-    )
 
 
 if __name__ == "__main__":

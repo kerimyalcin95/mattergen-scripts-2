@@ -54,6 +54,43 @@ def find_structure_files(
     return files
 
 
+def group_structure_files(
+    files: list[Path],
+) -> dict[str, list[Path]]:
+    """
+    Group structure files by their reduced chemical formula.
+
+    Structures that cannot be loaded are assigned to the
+    'unclassified' group so that the analysis scripts can
+    still record their failures.
+
+    Parameters
+    ----------
+    files
+        Structure files to group.
+
+    Returns
+    -------
+    dict[str, list[Path]]
+        Mapping of reduced formulas to structure files.
+    """
+
+    groups: dict[str, list[Path]] = {}
+
+    for path in files:
+        try:
+            structure = load_structure(path)
+
+            compound = structure.composition.reduced_formula
+
+        except Exception:
+            compound = "unclassified"
+
+        groups.setdefault(compound, []).append(path)
+
+    return dict(sorted(groups.items()))
+
+
 def load_structure(
     path: Path,
 ) -> Structure:
